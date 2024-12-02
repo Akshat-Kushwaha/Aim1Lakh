@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Stream - Sender</title>
+</head>
+<body>
+    <h1>Send Your Camera Feed</h1>
+    <video id="localVideo" autoplay playsinline></video>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script>
+        const socket = io('http://localhost:3000'); // Replace with your signaling server's URL
+        const peer = new RTCPeerConnection();
+
+        async function startStream() {
+            const video = document.getElementById('localVideo');
+            try {
+                // Access the camera
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+
+                // Add camera stream to PeerConnection
+                stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+                // Create and send an offer
+                const offer = await peer.createOffer();
+                await peer.setLocalDescription(offer);
+                socket.emit('offer', offer);
+
+                console.log('Offer sent to signaling server');
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+            }
+        }
+
+        // Handle ICE candidates
+        peer.onicecandidate = event => {
+            if (event.candidate) {
+                socket.emit('candidate', event.candidate);
+                console.log('ICE candidate sent to signaling server');
+            }
+        };
+
+        // Listen for the answer from the viewer
+        socket.on('answer', async answer => {
+            await peer.setRemoteDescription(answer);
+            console.log('Answer received and set as remote description');
+        });
+
+        // Listen for ICE candidates from the viewer
+        socket.on('candidate', async candidate => {
+            try {
+                await peer.addIceCandidate(candidate);
+                console.log('Received ICE candidate and added to PeerConnection');
+            } catch (err) {
+                console.error("Error adding ICE candidate:", err);
+            }
+        });
+
+        startStream();
+    </script>
+</body>
+</html>
